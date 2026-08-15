@@ -1,14 +1,7 @@
-# Databricks notebook source
-# =============================================================================
 # LH NAUTICAL — PIPELINE DE DADOS (ARQUITETURA MEDALLION)
 # Bronze -> Silver -> Gold | EDA, Schema, Previsão de Demanda e Recomendação
-# =============================================================================
 
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## 🥉 CAMADA BRONZE — Ingestão bruta dos 22 CSVs
-
-# COMMAND ----------
+#CAMADA BRONZE — Ingestão bruta dos 22 CSVs
 from pyspark.sql.functions import current_timestamp, lit
 
 caminho = "/Volumes/workspace/default/lh_nautical"
@@ -35,11 +28,8 @@ for tabela in tabelas:
 
 print("\n✅ Camada Bronze finalizada com sucesso!")
 
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## 📊 QUESTÃO 1 — EDA (Análise Exploratória)
+#QUESTÃO 1 — EDA (Análise Exploratória)
 
-# COMMAND ----------
 from pyspark.sql.functions import col, count, when
 
 print("--- QUESTÃO 1: EDA - VOLUMETRIA DAS TABELAS BRONZE ---\n")
@@ -52,7 +42,7 @@ for t in tabelas:
 df_resumo = spark.createDataFrame(resumo_eda, ["tabela", "n_linhas", "n_colunas"])
 df_resumo.orderBy(col("n_linhas").desc()).show(22, truncate=False)
 
-# Checagem de nulos nas tabelas centrais do negócio
+# Checagem de nulos nas tabelas centrais
 tabelas_criticas = ["customers", "orders", "order_items", "products", "product_variants"]
 
 print("--- NULOS NAS TABELAS CRÍTICAS ---\n")
@@ -62,22 +52,14 @@ for t in tabelas_criticas:
     exprs = [count(when(col(c).isNull(), c)).alias(c) for c in df.columns]
     df.select(exprs).show(truncate=False)
 
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## 🧬 QUESTÃO 2 — Schema das Tabelas Bronze
-
-# COMMAND ----------
+# QUESTÃO 2 — Schema das Tabelas Bronze
 print("--- QUESTÃO 2: SCHEMA DAS TABELAS BRONZE ---\n")
 for t in tabelas:
     df = spark.table(f"default.bronze_{t}")
     print(f"\n=== Tabela: bronze_{t} ===")
     df.printSchema()
 
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## 🥈 CAMADA SILVER — Tratamento e Qualidade
-
-# COMMAND ----------
+#AMADA SILVER — Tratamento e Qualidade
 from pyspark.sql.functions import col, to_timestamp
 
 print("Iniciando o processamento da Camada Silver...\n")
@@ -92,7 +74,7 @@ df_orders.write.format("delta") \
     .saveAsTable("default.silver_orders")
 print("✅ Tabela 'silver_orders' processada (apenas pedidos válidos).")
 
-# 2. Tratamento de Itens de Pedidos
+#Tratamento de Itens de Pedidos
 df_order_items = spark.table("default.bronze_order_items") \
     .withColumn("unit_price", col("unit_price").cast("double")) \
     .withColumn("quantity", col("quantity").cast("double")) \
@@ -103,7 +85,7 @@ df_order_items.write.format("delta") \
     .saveAsTable("default.silver_order_items")
 print("✅ Tabela 'silver_order_items' processada.")
 
-# 3. Tratamento de Devoluções
+#Tratamento de Devoluções
 df_returns = spark.table("default.bronze_returns") \
     .filter(col("status") == "completed")
 df_returns.write.format("delta") \
@@ -114,11 +96,8 @@ print("✅ Tabela 'silver_returns' processada (apenas devoluções concluídas).
 
 print("\n✅ Camada Silver finalizada")
 
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## 🥇 CAMADA GOLD — Questões 4 e 5
+#CAMADA GOLD — Questões 4 e 5
 
-# COMMAND ----------
 from pyspark.sql.functions import col, sum as _sum, avg, countDistinct, expr, to_date, dayofweek
 
 print("Iniciando o processamento da Camada Gold...\n")
@@ -130,7 +109,7 @@ pv = spark.table("default.bronze_product_variants").alias("pv")
 p = spark.table("default.bronze_products").alias("p")
 c = spark.table("default.bronze_customers").alias("c")
 
-# Base de vendas enriquecida (nível de item — usada para diversidade de categorias)
+# Base de vendas
 df_vendas_completa = o \
     .join(oi, col("o.id") == col("oi.order_id")) \
     .join(pv, col("oi.product_variant_id") == col("pv.id")) \
@@ -140,7 +119,6 @@ df_vendas_completa = o \
 # QUESTÃO 4: Clientes Fiéis (Ticket Médio e Diversidade >= 13)
 # Faturamento e frequência calculados direto de 'orders' (nível de pedido),
 # evitando duplicação por múltiplos itens no mesmo pedido.
-# ---------------------------------------------------------------------------
 df_faturamento = spark.table("default.silver_orders") \
     .groupBy(col("customer_id")) \
     .agg(
@@ -164,9 +142,8 @@ df_q4.write.format("delta").mode("overwrite").option("overwriteSchema", "true").
 print("--- QUESTÃO 4: TOP 10 CLIENTES FIÉIS (DIVERSIDADE >= 13) ---")
 df_q4.show(10, truncate=False)
 
-# ---------------------------------------------------------------------------
-# QUESTÃO 5: Calendário e Dias em Português (Date Spine)
-# ---------------------------------------------------------------------------
+
+# QUESTÃO 5: Calendário e Dias em Português
 df_calendario = spark.sql("SELECT explode(sequence(to_date('2020-01-01'), to_date('2026-12-31'), interval 1 day)) as data_completa")
 
 df_vendas_diarias = spark.table("default.silver_orders") \
@@ -199,22 +176,14 @@ df_q5.select("dia_semana_pt", "media_venda_diaria").show(7, truncate=False)
 
 print("\n✅ Camada Gold e Relatórios das Questões concluídos com sucesso!")
 
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## ✅ QUESTÃO 3.2 — Validação de Volumetria
-
-# COMMAND ----------
+#QUESTÃO 3.2 — Validação de Volumetria
 tabelas_validacao = ["customers", "orders", "order_items", "payments"]
 total_linhas = sum([spark.table(f"default.bronze_{t}").count() for t in tabelas_validacao])
 
 print("--- QUESTÃO 3.2: TOTAL DE LINHAS ---")
 print(f"Soma total das linhas (customers + orders + order_items + payments): {total_linhas:,}")
 
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## 📈 QUESTÃO 6 — Previsão de Demanda (Bússola de Bordo 702)
-
-# COMMAND ----------
+#QUESTÃO 6 — Previsão de Demanda (Bússola de Bordo 702)
 import pandas as pd
 from sklearn.metrics import mean_absolute_error
 
@@ -269,11 +238,7 @@ print("\n--- COMPARAÇÃO: SARIMAX ---")
 print(f"Soma total arredondada Q1/2026 (SARIMAX): {soma_previsao_sarimax} unidades")
 print(f"MAE do SARIMAX: {mae_sarimax:.2f}")
 
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## 🔗 QUESTÃO 7 — Sistema de Recomendação (Motor de Popa 1949)
-
-# COMMAND ----------
+#QUESTÃO 7 — Sistema de Recomendação (Motor de Popa 1949)
 from sklearn.metrics.pairwise import cosine_similarity
 
 # 1. Unir vendas com produtos
