@@ -1,4 +1,3 @@
-[README_lh_nautical.md](https://github.com/user-attachments/files/31093312/README_lh_nautical.md)
 # 🛥️ LH Nautical — Pipeline de Dados (Databricks / Arquitetura Medallion)
 
 ## 📌 Objetivo
